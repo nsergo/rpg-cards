@@ -6,7 +6,7 @@ RPG spell/item/monster card generator
 Preview
 =======
 
-Click [here](https://rpg-cards.bnm12.dk/) for a live preview of this generator.
+Click [here](https://nsergo.github.io/rpg-cards/) for a live preview of this generator.
 
 Documentation
 =============
