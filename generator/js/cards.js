@@ -23,6 +23,7 @@ function card_default_options() {
         rounded_corners: true,
         back_bleed_width: "0mm",
         back_bleed_height: "0mm",
+        card_pagination: true,
     };
 }
 
@@ -745,6 +746,148 @@ var card_element_generators = {
 };
 
 // ============================================================================
+// Card pagination functions
+// ============================================================================
+
+function card_detect_overflow(card_html, options) {
+    // Create a temporary card to measure content overflow
+    var $tempContainer = $('<div style="position:absolute;visibility:hidden;pointer-events:none;top:-9999px;"></div>');
+    var $tempCard = $(card_html);
+    
+    $('body').append($tempContainer.append($tempCard));
+    
+    var $contentContainer = $tempCard.find('.card-content-container');
+    var containerHeight = $contentContainer.height();
+    var scrollHeight = $contentContainer[0] ? $contentContainer[0].scrollHeight : containerHeight;
+    
+    // Very generous buffer - only consider it overflow if much larger
+    var hasOverflow = scrollHeight > (containerHeight + 20);
+    
+    $tempContainer.remove();
+    
+    return hasOverflow;
+}
+
+function card_split_content_for_pagination(contents, card_data, options) {
+    // Simpler approach: use heuristics to group content reasonably
+    var pages = [];
+    var remainingContent = contents.slice();
+    
+    // First try the binary search approach
+    while (remainingContent.length > 0) {
+        var maxFit = card_find_max_content_fit(remainingContent, card_data, options);
+        
+        // If overflow detection is being too conservative, use heuristic grouping
+        if (maxFit <= 2 && remainingContent.length > 2) {
+            var heuristicSize = card_heuristic_group_size(remainingContent);
+            // Use the larger of the two approaches
+            maxFit = Math.max(maxFit, heuristicSize);
+        }
+        
+        if (maxFit === 0) {
+            maxFit = 1; // Force at least one element
+        }
+        
+        var currentPage = remainingContent.slice(0, maxFit);
+        pages.push(currentPage);
+        remainingContent = remainingContent.slice(maxFit);
+    }
+    
+    return pages;
+}
+
+function card_heuristic_group_size(contents) {
+    // More aggressive heuristic: group more elements together
+    var groupSize = 1;
+    
+    for (var i = 0; i < Math.min(contents.length, 12); i++) {
+        var element = contents[i];
+        
+        // Small elements that usually fit together
+        if (element.startsWith('property |') || 
+            element.startsWith('subtitle |') || 
+            element === 'rule' || 
+            element === 'ruler') {
+            groupSize++;
+        } else if (element.startsWith('text |')) {
+            // Text elements - try to fit 1-2 more
+            if (groupSize <= 3) {
+                groupSize++;
+            } else {
+                break;
+            }
+        } else if (element.startsWith('description |')) {
+            // Description elements - try to fit 2-3 per card
+            if (groupSize <= 4) {
+                groupSize++;
+            } else {
+                break;
+            }
+        }
+    }
+    
+    return Math.min(groupSize, contents.length);
+}
+
+function card_find_max_content_fit(contents, card_data, options) {
+    if (contents.length === 0) return 0;
+    
+    // Try adding elements incrementally until overflow
+    var maxFit = 0;
+    
+    for (var i = 1; i <= contents.length; i++) {
+        var testContent = contents.slice(0, i);
+        var testData = Object.assign({}, card_data, { contents: testContent });
+        var testHtml = card_generate_front(testData, options);
+        
+        if (card_detect_overflow(testHtml, options)) {
+            break;
+        } else {
+            maxFit = i;
+        }
+    }
+    
+    return maxFit;
+}
+
+function card_create_paginated_cards(card_data, options) {
+    if (!options.card_pagination) {
+        return [card_data];
+    }
+    
+    // Generate initial card to test for overflow
+    var initialHtml = card_generate_front(card_data, options);
+    
+    if (!card_detect_overflow(initialHtml, options)) {
+        return [card_data];
+    }
+    
+    // Split content across multiple pages
+    var contentPages = card_split_content_for_pagination(card_data.contents, card_data, options);
+    
+    if (contentPages.length <= 1) {
+        return [card_data];
+    }
+    
+    // Create cards for each page
+    var paginatedCards = [];
+    
+    for (var i = 0; i < contentPages.length; i++) {
+        var pageCard = Object.assign({}, card_data);
+        pageCard.contents = contentPages[i];
+        
+        // Update title to show pagination
+        var pageNumber = i + 1;
+        var totalPages = contentPages.length;
+        pageCard.title = card_data.title + ' (' + pageNumber + '/' + totalPages + ')';
+        
+        paginatedCards.push(pageCard);
+    }
+    
+    return paginatedCards;
+}
+
+// ============================================================================
 // Card generating functions
 // ============================================================================
 
@@ -1072,10 +1215,17 @@ function card_pages_generate_html(card_data, options) {
     var rows = options.page_rows || 3;
     var cols = options.page_columns || 3;
 
+    // Apply pagination if enabled, then generate HTML for each card
+    var expanded_card_data = [];
+    card_data.forEach(function (data) {
+        var paginatedCards = card_create_paginated_cards(data, options);
+        expanded_card_data = expanded_card_data.concat(paginatedCards);
+    });
+    
     // Generate the HTML for each card
     var front_cards = [];
     var back_cards = [];
-    card_data.forEach(function (data) {
+    expanded_card_data.forEach(function (data) {
         var count = options.card_count || data.count || 1;
         var front = card_generate_front(data, options);
         var back = card_generate_back(data, options);

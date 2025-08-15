@@ -251,9 +251,17 @@ function ui_render_selected_card() {
     var card = ui_selected_card();
     $('#preview-container').empty();
     if (card) {
-        var front = card_generate_front(card, card_options);
-        var back = card_generate_back(card, card_options);
-        $('#preview-container').html(front + "\n" + back);
+        // Apply pagination to the selected card
+        var paginatedCards = card_create_paginated_cards(card, card_options);
+        
+        var allCards = "";
+        paginatedCards.forEach(function(paginatedCard) {
+            var front = card_generate_front(paginatedCard, card_options);
+            var back = card_generate_back(paginatedCard, card_options);
+            allCards += front + "\n" + back + "\n";
+        });
+        
+        $('#preview-container').html(allCards);
     }
     local_store_save();
 }
@@ -756,6 +764,7 @@ $(document).ready(function () {
     $("#page-zoom").on("input", ui_change_option);
     $("#grid-rotate").click(ui_grid_rotate);
     $("#card-arrangement").change(ui_change_option);
+    $("#card-pagination").change(ui_change_option);
     $("#card-width").on("input", ui_change_option);
     $("#card-height").on("input", ui_change_option);
     $("#card-size").change(ui_change_option).trigger("change");
